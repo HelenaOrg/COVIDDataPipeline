@@ -7,4 +7,4 @@ aws s3 sync s3://sg-c19-response/weekly-patterns/v2/ ./data/weekly_patterns/ --e
 aws s3 sync s3://sg-c19-response/weekly-patterns-delivery/weekly/ ./data/weekly_patterns/v2/ --endpoint https://s3.wasabisys.com
 pip3 install censusgeocode ciso8601 tqdm;
 pip3 install "dask[dataframe]" --upgrade ;
-python3 ./social_distancing.py
+python3 ./data_pipeline.py
