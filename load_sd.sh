@@ -1,6 +1,6 @@
 mkdir -p data/social_distancing
-mkdir data/transactions
-mkdir data/weekly_patterns
+mkdir -p data/transactions
+mkdir -p data/weekly_patterns
 aws s3 sync s3://sg-c19-response/social-distancing/v2/ ./data/social-distancing/ --endpoint https://s3.wasabisys.com ;
 aws s3 sync s3://sg-c19-response/transactions-facteus/ ./data/transactions/ --endpoint https://s3.wasabisys.com ;
 aws s3 sync s3://sg-c19-response/weekly-patterns/v2/ ./data/weekly_patterns/ --endpoint https://s3.wasabisys.com ;
