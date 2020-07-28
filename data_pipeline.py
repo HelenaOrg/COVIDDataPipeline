@@ -25,6 +25,7 @@ def load_social_distance_all(index=None):
 #     print(list(os.walk(path)))
     file_list = []
     for root, directory, files in os.walk(path):
+        print(files)
         if len(files)==2:
             for file in files:
                 if file[-3:] == 'csv':
