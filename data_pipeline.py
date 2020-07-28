@@ -25,9 +25,11 @@ def load_social_distance_all(index=None):
 #     print(list(os.walk(path)))
     file_list = []
     for root, directory, files in os.walk(path):
-        for file in files:
-            if file[-3:] == 'csv':
-                file_list.append(root+'/'+file)
+        print(files)
+        if len(files)==2:
+            for file in files:
+                if file[-3:] == 'csv':
+                    file_list.append(root+'/'+file)
 
     return file_list
 
@@ -75,6 +77,7 @@ start_cols = ['origin_census_block_group', 'date_range_start', 'date_range_end',
 
 
 ### Preload some things
+unzip_all()
 social = load_social_distance_all()
 output_folder = './data/social_distancing_processed/'
 
