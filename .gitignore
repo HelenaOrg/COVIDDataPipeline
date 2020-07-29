@@ -1,2 +1,3 @@
 set_secret_keys.sh
 venv/
+data/
