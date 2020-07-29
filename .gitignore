@@ -1,3 +1,4 @@
 set_secret_keys.sh
 venv/
-data/
+data/*
+!data/county_data/
