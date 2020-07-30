@@ -110,6 +110,7 @@ def process_social(file):
 
     # don't run if the file's already processed
     if os.path.exists(cbgs_out):
+        print('Done: ' + file)
         return None
     
     
@@ -342,7 +343,6 @@ out_file_path = './data/output_data/final.csv'
 
 out_dtype['county_id'] = str
 cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
-cases_df = cases_df.drop('Unnamed: 0', axis=1)
 cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
 
 days = [day for day in pd.date_range(start=start_date, end=end_date)]
@@ -351,11 +351,7 @@ for i, day in enumerate(days):
     
     print(day)
     file_in = in_file_path.format(day.strftime('%Y-%m-%d'))
-    if day.strftime('%Y-%m-%d') in ["2020-02-02", "2020-02-03"]:
-        print('hi')
-        continue
 
-    
     social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
 
     new_cols = [s for s in social_df.columns if s not in text_cols]
