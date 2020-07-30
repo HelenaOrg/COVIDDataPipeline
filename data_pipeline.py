@@ -18,10 +18,16 @@ import re
 import ciso8601
 from multiprocessing import Pool
 import operator
+import shapefile
+from shapely.geometry import Point # Point class
+from shapely.geometry import shape
+import rapidjson
+import random
+
 
 def unzip_all():
     # This iterates through the whole file tree unzipping files
-    paths = ['./data/weekly_patterns/', './data/us_places/', './data/social-distancing/']
+    paths = ['./data/weekly_patterns/', './data/social-distancing/']
     for path in paths:
         for root, directory, files in os.walk(path):
             if len(files)==1:
@@ -105,7 +111,7 @@ def load_social_distance_all(index=None):
 
 def process_social(file): 
     # Create the output file; one for every day
-    output_folder = './data/processed_data'
+    output_folder = './data/processed_data/social_distancing'
     cbgs_out = os.path.join(output_folder, file.split('/')[-1])
 
     # don't run if the file's already processed
@@ -246,6 +252,158 @@ def create_raw_columns(x):
     return [cat for cat in re.findall(r'[\"\[\(]([0-9-\>\<]+?)\"', x)]
 
 
+# Utils for building the poi data
+
+def parse_week_old_format(f): #takes filepath,
+    global place_to_category
+    global place_categories
+    global places_df
+    date_to_stats = {}
+    week = f[:10] # week is START day
+    temp_out = './data/processed_data/poi'
+    outfile_name = os.path.join(temp, week + '_poi.csv')
+    if os.path.exits(outfile_name):
+        return None
+    else:
+        fp = os.path.join('./data/safegraph/weekly-patterns-0/main-file/', f)
+        weekly_df = pd.read_csv(fp, usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})
+        start_date = dt.strptime(week, '%Y-%m-%d')
+        norm_df = pd.read_csv('./data/safegraph/weekly-patterns-0/normalization-stats/{}-normalization-stats.csv'.format(week))
+        norm_df['sort_index'] = norm_df['year']*400 + norm_df['month']*40 + norm_df['day']
+        norm_df = norm_df.sort_values('sort_index')
+        week_dates = []
+        for weekday in range(7):
+            date = start_date + timedelta(days=weekday)
+            date = date.strftime('%Y-%m-%d')
+            week_dates += [date]
+            date_to_stats[date] = {
+                'county_category_data' : {},
+            }
+            
+        for i in range(weekly_df.shape[0]):
+            if (i%100000) == 0:
+                print('{}: {}/{}'.format(week, i, weekly_df.shape[0]))
+            row = weekly_df.iloc[i]
+            place_id = row['safegraph_place_id']
+            visits_by_day = eval(row['visits_by_day'])
+            cbg = row['poi_cbg']
+            if type(cbg) == str:
+                county_id = cbg[:5]
+                if place_id in place_to_category:
+                    category = place_to_category[place_id]
+                    if county_id and type(category) == str:
+                        if county_id not in date_to_stats[week_dates[weekday]]['county_category_data']:
+                            for weekday in range(7):
+                                date_to_stats[week_dates[weekday]]['county_category_data'][county_id] = {c : [] for c in place_categories}
+                        for weekday in range(7):
+                            elt = {
+                                'count' : visits_by_day[weekday],
+                                'median_dwell' : row['median_dwell']
+                            }
+
+                            date_to_stats[week_dates[weekday]]['county_category_data'][county_id][category] += [elt]
+                            date_to_stats[week_dates[weekday]]['total_devices_seen'] = norm_df['total_devices_seen'].iloc[weekday]
+        out_rows = []
+        for d in date_to_stats:
+            for cid in date_to_stats[d]['county_category_data']:
+                row = {
+                    'date' : d,
+                    'county_id' : cid,
+                    'normalizaton_count': date_to_stats[d]['total_devices_seen']
+                } 
+                for category in place_categories:
+                    if category in date_to_stats[d]['county_category_data'][cid]:
+                        row[category] = date_to_stats[d]['county_category_data'][cid][category] 
+                    else:
+                        row[category] = 0
+                out_rows += [row]
+        out_df = pd.DataFrame(out_rows)
+        out_df.to_csv(outfile_name, index=False)            
+        return None
+
+
+def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patterns-1/patterns/2020/07/08' filepath indicates END date, not START date
+    global place_to_category
+    global place_categories
+    global places_df
+    date_to_stats = {}
+    week = '-'.join(fp[-13:-3].split('/')) 
+    temp_out = './data/processed_data/poi'
+    outfile_name = os.path.join(temp, week + '_poi.csv')
+    if os.path.exits(outfile_name):
+        return None 
+    else:
+        norm_df = pd.read_csv(os.path.join(fp, 'normalization_stats.csv').replace('/patterns', '/normalization_stats'))
+        norm_df['sort_index'] = norm_df['year']*400 + norm_df['month']*40 + norm_df['day']
+        norm_df = norm_df.sort_values('sort_index')
+        start_date = dt.strptime(year=norm_df.iloc[0]['year'], month=norm_df.iloc[0]['month'], day=norm_df.iloc[0]['day'])
+        print('Starting {}'.format(start_date.strftime('%Y-%m-%d')))
+        
+        dirfiles = [f for f in os.listdir(fp) if f[-4:] == '.csv']
+        weekly_df = pd.read_csv(os.path.join(fp, dirfiles[0]), usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})
+        for f in dirfiles[1:]:
+            weekly_df = pd.concat([weekly_df, pd.read_csv(os.path.join(fp, f), usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})], axis=0)
+        
+        week_dates = []
+        for weekday in range(7):
+            date = start_date + timedelta(days=weekday)
+            date = date.strftime('%Y-%m-%d')
+            week_dates += [date]
+            date_to_stats[date] = {
+                'county_category_data' : {},
+            }
+        for i in range(weekly_df.shape[0]):
+            if (i%100000) == 0:
+                print('{}: {}/{}'.format(week, i, weekly_df.shape[0]))
+            row = weekly_df.iloc[i]
+            place_id = row['safegraph_place_id']
+            visits_by_day = eval(row['visits_by_day'])
+            cbg = row['poi_cbg']
+            if type(cbg) == str:
+                county_id = cbg[:5]
+                if place_id in place_to_category:
+                    category = place_to_category[place_id]
+                    if county_id and type(category) == str:
+                        if county_id not in date_to_stats[week_dates[weekday]]['county_category_data']:
+                            for weekday in range(7):
+                                date_to_stats[week_dates[weekday]]['county_category_data'][county_id] = {c : [] for c in place_categories}
+                        for weekday in range(7):
+                            elt = {
+                                'count' : visits_by_day[weekday],
+                                'median_dwell' : row['median_dwell']
+                            }
+
+                            date_to_stats[week_dates[weekday]]['county_category_data'][county_id][category] += [elt]
+                            date_to_stats[week_dates[weekday]]['total_devices_seen'] = norm_df['total_devices_seen'].iloc[weekday]
+
+        out_rows = []
+        for d in date_to_stats:
+            for cid in date_to_stats[d]['county_category_data']:
+                row = {
+                    'date' : d,
+                    'county_id' : cid,
+                    'normalizaton_count': date_to_stats[d]['total_devices_seen']
+                } 
+                for category in place_categories:
+                    if category in date_to_stats[d]['county_category_data'][cid]:
+                        row[category] = date_to_stats[d]['county_category_data'][cid][category] 
+                    else:
+                        row[category] = 0
+                out_rows += [row]
+        out_df = pd.DataFrame(out_rows)
+        out_df.to_csv(outfile_name, index=False)            
+        return None
+
+
+
+
+
+
+
+
+
+
+
 # Refactored data pipeline
 
 unzip_all()
@@ -338,8 +496,8 @@ text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
              'bucketed_home_dwell_time_join']
 
 dtype={'origin_fips': 'str', 'date_start': 'str'}
-in_file_path = './data/processed_data/{}-social-distancing.csv'
-out_file_path = './data/output_data/final.csv'
+in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
+out_file_path = './data/assembly/temp.csv'
 
 out_dtype['county_id'] = str
 cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
@@ -371,8 +529,72 @@ for i, day in enumerate(days):
             df2[col] = df2[col].astype(int)
             df2[col] = df2[col].apply(lambda x: str(x).rjust(5, '0'))
     if i==0:
-        df2.to_csv(out_file_path,mode='w')#, single_file = True)
+        df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
     else:
-        df2.to_csv(out_file_path, mode='a', header=False)#, single_file = True)
+        df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
     
+print('Building POI data')
+
+places_df = pd.read_csv('./data/safegraph/us-places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
+for i in range(2, 6):
+    print('Reading places DF: {}'.format(i))
+    places_df = pd.concat([places_df, pd.read_csv('./data/safegraph/us-places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
+
+place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
+place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
+
+
+
+rootdir_old = './data/poi/weekly_patterns/main-file'
+rootdir_new = './data/poi/weekly_patterns_v2/patterns'
+temp_out = './data/processed_data/poi'
+
+weeks = []
+for f in os.listdir(rootdir_old):
+    if f[:4] == '2020' and f[-4:] == '.csv':
+        weeks += [f]
+
+print('Initializing pool')
+print('Parsing old POI data')
+complete_counter = 0
+output = {}
+o_to_write = []
+for res in pool.map(parse_week_old_format, weeks):
+    complete_counter += 1
+    print('{}/{} files complete'.format(complete_counter, len(weeks)))
+    
+
+dirpaths = []
+for fp, dirs, files in os.walk(rootdir_new):
+    if len([fn for fn in files if 'patterns-part' in fn and fn[-4:] == '.csv']) > 0: 
+        dirpaths += [fp]
+print('Parsing new POI data')
+complete_counter = 0
+for res in pool.map(parse_week_new_format, dirpaths):
+    complete_counter += 1
+    print('{}/{} files complete'.format(complete_counter, len(dirpaths)))
+
+print('Assembling POI dataframe')
+is_first = True
+for fp, dirs, files in os.walk('./data/processed_data/poi'): 
+    for f in files:
+        print(f)
+        if is_first:
+            poi_df = pd.read_csv(os.path.join(fp, f))
+        else:
+            poi_df2 = pd.read_csv(os.path.join(fp, f))
+            poi_df = pd.concat([poi_df, poi_df2], axis=0)
+
+dtype_dict = out_dtype
+dtype_dict['county_id'] = str
+county_time_series = pd.read_csv('./data/processed_data/assembly/temp.csv', dtype=dtype_dict)
+county_time_series.set_index(['county_id', 'date'])
+
+poi_df.set_index(['county_id', 'date'])
+print('Joining poi and county_time_series')
+output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
+output_df = output_df.reset_index()
+print('Writing final.csv')
+
+output_df.to_csv('./data/output_data/final.csv', index=False)
 
