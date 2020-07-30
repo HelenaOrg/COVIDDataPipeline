@@ -545,10 +545,10 @@ for i, day in enumerate(days):
     
 print('Building POI data')
 
-places_df = pd.read_csv('./data/us-places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
+places_df = pd.read_csv('./data/us_places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
 for i in range(2, 6):
     print('Reading places DF: {}'.format(i))
-    places_df = pd.concat([places_df, pd.read_csv('./data/us-places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
+    places_df = pd.concat([places_df, pd.read_csv('./data/us_places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
 
 place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
 place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
