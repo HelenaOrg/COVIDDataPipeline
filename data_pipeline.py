@@ -23,6 +23,14 @@ from shapely.geometry import Point # Point class
 from shapely.geometry import shape
 import rapidjson
 import random
+import zipfile
+
+def unzip_us_places():
+    for fp, dirs, files in os.walk('./data/us_places'):
+        for f in files:
+            if f[-4:] == '.zip':
+                zf = zipfile.ZipFile(os.path.join(fp, f))
+                zf.extractall(fp)
 
 
 def unzip_all():
@@ -407,6 +415,7 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
 # Refactored data pipeline
 
 unzip_all()
+unzip_us_places()
 
 start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
 end_date = dt.today().strftime('%Y-%m-%d') 
@@ -497,7 +506,7 @@ text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
 
 dtype={'origin_fips': 'str', 'date_start': 'str'}
 in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
-out_file_path = './data/assembly/temp.csv'
+out_file_path = './data/processed_data/assembly/temp.csv'
 
 out_dtype['county_id'] = str
 cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
@@ -509,9 +518,10 @@ for i, day in enumerate(days):
     
     print(day)
     file_in = in_file_path.format(day.strftime('%Y-%m-%d'))
-
-    social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
-
+    try:
+        social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
+    except:
+        break
     new_cols = [s for s in social_df.columns if s not in text_cols]
     social_df = social_df[new_cols]
     
@@ -535,10 +545,10 @@ for i, day in enumerate(days):
     
 print('Building POI data')
 
-places_df = pd.read_csv('./data/safegraph/us-places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
+places_df = pd.read_csv('./data/us-places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
 for i in range(2, 6):
     print('Reading places DF: {}'.format(i))
-    places_df = pd.concat([places_df, pd.read_csv('./data/safegraph/us-places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
+    places_df = pd.concat([places_df, pd.read_csv('./data/us-places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
 
 place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
 place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
