@@ -334,9 +334,12 @@ def parse_week_old_format(f): #takes filepath,
                 } 
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
-                        row[category] = date_to_stats[d]['county_category_data'][cid][category] 
+                        day_data = date_to_stats[d]['county_category_data'][cid][category]
+                        row[category + '_count_sum'] = sum([elt['count'] for elt in date_data])
+                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in date_date)/row[category + '_count_sum']
                     else:
-                        row[category] = 0
+                        row[category + '_count_sum'] = 0
+                        row[category + '_median_dwell_weighted_avg'] = 0
                 out_rows += [row]
         out_df = pd.DataFrame(out_rows)
         out_df.to_csv(outfile_name, index=False)            
@@ -357,7 +360,7 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
         norm_df = pd.read_csv(os.path.join(fp, 'normalization_stats.csv').replace('/patterns', '/normalization_stats'))
         norm_df['sort_index'] = norm_df['year']*400 + norm_df['month']*40 + norm_df['day']
         norm_df = norm_df.sort_values('sort_index')
-        start_date = dt.strptime(year=norm_df.iloc[0]['year'], month=norm_df.iloc[0]['month'], day=norm_df.iloc[0]['day'])
+        start_date = dt(year=norm_df.iloc[0]['year'], month=norm_df.iloc[0]['month'], day=norm_df.iloc[0]['day'])
         print('Starting {}'.format(start_date.strftime('%Y-%m-%d')))
         
         dirfiles = [f for f in os.listdir(fp) if f[-4:] == '.csv']
@@ -407,9 +410,12 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
                 } 
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
-                        row[category] = date_to_stats[d]['county_category_data'][cid][category] 
+                        day_data = date_to_stats[d]['county_category_data'][cid][category]
+                        row[category + '_count_sum'] = sum([elt['count'] for elt in date_data])
+                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in date_date)/row[category + '_count_sum']
                     else:
-                        row[category] = 0
+                        row[category + '_count_sum'] = 0
+                        row[category + '_median_dwell_weighted_avg'] = 0
                 out_rows += [row]
         out_df = pd.DataFrame(out_rows)
         out_df.to_csv(outfile_name, index=False)            
@@ -426,9 +432,9 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
 
 
 # Refactored data pipeline
-pool = Pool(14)
+pool = Pool(60)
 
-'''
+
 unzip_all()
 unzip_us_places()
 
@@ -448,11 +454,13 @@ social = load_social_distance_all()
 
 ### Number of FIPS cols to keep
 ### Create columns for all them FIPS buckets
+
 num_fips = 19
 destination_fips_cols = [j for i in range(num_fips) for j in['destination_fips' + str(i), 'devices' + str(i)]] 
 
 
 ### Define aggregation columns
+
 agg_cols = [
     'device_count', 'distance_traveled_from_home',
     'completely_home_device_count', 'median_home_dwell_time',
@@ -522,8 +530,9 @@ text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
 dtype={'origin_fips': 'str', 'date_start': 'str'}
 in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
 out_file_path = './data/processed_data/assembly/temp.csv'
-
+'''
 out_dtype['county_id'] = str
+'''
 cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
 cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
 
@@ -557,7 +566,7 @@ for i, day in enumerate(days):
         df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
     else:
         df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
-'''
+
 
 
 rootdir_old = './data/poi/weekly_patterns/main-file'
@@ -595,21 +604,23 @@ for fp, dirs, files in os.walk('./data/processed_data/poi'):
     for f in files:
         print(f)
         if is_first:
-            poi_df = pd.read_csv(os.path.join(fp, f))
+            poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
         else:
-            poi_df2 = pd.read_csv(os.path.join(fp, f))
+            poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
             poi_df = pd.concat([poi_df, poi_df2], axis=0)
 
 dtype_dict = out_dtype
 dtype_dict['county_id'] = str
 county_time_series = pd.read_csv('./data/processed_data/assembly/temp.csv', dtype=dtype_dict)
-county_time_series.set_index(['county_id', 'date'])
 
-poi_df.set_index(['county_id', 'date'])
+county_time_series = county_time_series.set_index(['county_id', 'date'])
+
+poi_df = poi_df.set_index(['county_id', 'date'])
 print('Joining poi and county_time_series')
+
 output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
 output_df = output_df.reset_index()
 print('Writing final.csv')
-
+output_df = output_df.drop(columns=['Unnamed: 0'])
 output_df.to_csv('./data/output_data/final.csv', index=False)
 
