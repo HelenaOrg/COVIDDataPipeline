@@ -24,6 +24,17 @@ from shapely.geometry import shape
 import rapidjson
 import random
 import zipfile
+print('Building POI data')
+
+places_df = pd.read_csv('./data/us_places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
+for i in range(2, 6):
+    print('Reading places DF: {}'.format(i))
+    places_df = pd.concat([places_df, pd.read_csv('./data/us_places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
+
+place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
+place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
+
+print(len(place_to_category))
 
 def unzip_us_places():
     for fp, dirs, files in os.walk('./data/us_places'):
@@ -269,14 +280,16 @@ def parse_week_old_format(f): #takes filepath,
     date_to_stats = {}
     week = f[:10] # week is START day
     temp_out = './data/processed_data/poi'
-    outfile_name = os.path.join(temp, week + '_poi.csv')
-    if os.path.exits(outfile_name):
+    outfile_name = os.path.join(temp_out, week + '_poi.csv')
+    if os.path.exists(outfile_name):
         return None
     else:
-        fp = os.path.join('./data/safegraph/weekly-patterns-0/main-file/', f)
+        print(f)
+        fp = os.path.join('./data/poi/weekly_patterns/main-file/', f)
         weekly_df = pd.read_csv(fp, usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})
+        print('Weekly df loaded')
         start_date = dt.strptime(week, '%Y-%m-%d')
-        norm_df = pd.read_csv('./data/safegraph/weekly-patterns-0/normalization-stats/{}-normalization-stats.csv'.format(week))
+        norm_df = pd.read_csv('./data/poi/weekly_patterns/normalization-stats/{}-normalization-stats.csv'.format(week))
         norm_df['sort_index'] = norm_df['year']*400 + norm_df['month']*40 + norm_df['day']
         norm_df = norm_df.sort_values('sort_index')
         week_dates = []
@@ -337,8 +350,8 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
     date_to_stats = {}
     week = '-'.join(fp[-13:-3].split('/')) 
     temp_out = './data/processed_data/poi'
-    outfile_name = os.path.join(temp, week + '_poi.csv')
-    if os.path.exits(outfile_name):
+    outfile_name = os.path.join(temp_out, week + '_poi.csv')
+    if os.path.exists(outfile_name):
         return None 
     else:
         norm_df = pd.read_csv(os.path.join(fp, 'normalization_stats.csv').replace('/patterns', '/normalization_stats'))
@@ -413,7 +426,9 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
 
 
 # Refactored data pipeline
+pool = Pool(14)
 
+'''
 unzip_all()
 unzip_us_places()
 
@@ -487,7 +502,7 @@ out_dtype = dict([(col, float) for col in agg_cols] +
                 [('devices' + str(n), 'float64') for n in range(num_fips)] +
                 [('destination_fips' + str(n), 'float64') for n in range(num_fips)]
                 )
-pool = Pool(14)
+
 pool.map(process_social, social)
 
 
@@ -542,17 +557,7 @@ for i, day in enumerate(days):
         df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
     else:
         df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
-    
-print('Building POI data')
-
-places_df = pd.read_csv('./data/us_places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
-for i in range(2, 6):
-    print('Reading places DF: {}'.format(i))
-    places_df = pd.concat([places_df, pd.read_csv('./data/us_places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
-
-place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
-place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
-
+'''
 
 
 rootdir_old = './data/poi/weekly_patterns/main-file'
