@@ -46,7 +46,7 @@ def unzip_us_places():
 
 def unzip_all():
     # This iterates through the whole file tree unzipping files
-    paths = ['./data/weekly_patterns/', './data/social-distancing/']
+    paths = ['./data/poi/weekly_patterns/', './data/social-distancing/']
     for path in paths:
         for root, directory, files in os.walk(path):
             if len(files)==1:
@@ -128,76 +128,7 @@ def load_social_distance_all(index=None):
 
     return file_list
 
-def process_social(file): 
-    # Create the output file; one for every day
-    output_folder = './data/processed_data/social_distancing'
-    cbgs_out = os.path.join(output_folder, file.split('/')[-1])
 
-    # don't run if the file's already processed
-    if os.path.exists(cbgs_out):
-        print('Done: ' + file)
-        return None
-    
-    
-    print('loading: ' + file) 
-    social_df = dd.read_csv(file, error_bad_lines=False, dtype=start_dtype)
-
-    # Create date and origin_fips cols
-    social_df['date_start'] = social_df['date_range_start'].map(lambda x: x[:10]) 
-    social_df['date_end'] = social_df['date_range_end'].map(lambda x: x[:10]) 
-    
-    social_df['origin_fips'] = social_df['origin_census_block_group'].apply(lambda x: cbgs_to_county_fips(x), 
-                                                                    meta=('origin_census_block_group', str)) 
-
-    # Groupby and Sum
-    agg_dict = {x: ['min', 'max', 'sum', 'prod', 'mean', 'std'] for x in agg_cols}
-    bucket_agg = dd.Aggregation('join', 
-                                lambda x: x.agg(''.join),
-                                lambda x0: x0.agg(''.join),
-                            )
-    bucket_agg2 = dd.Aggregation('new', 
-                                lambda x: x.agg( lambda x: dict_flatten2(x, num_fips)),
-                                lambda x0: x0.agg(''.join),
-                            )
-    
-    bucket_dict = {x: bucket_agg for x in bucket_cols + home_cols + destination_cols}
-    
-    for col in bucket_cols:
-        social_df[col] = social_df[col].astype(str)
-        
-    social_df = social_df[groupby_cols + bucket_cols + agg_cols + home_cols + destination_cols] \
-            .groupby(groupby_cols) \
-            .agg(dict(agg_dict, **bucket_dict)) # most efficient way to add two dicts
-
-    
-    # Kill the dreaded MultiIndex
-    social_df.columns = ['_'.join(col).strip() for col in social_df.columns.values]
-    social_df = social_df.reset_index()
-    
-    
-    
-    # Redo MetaData
-    for col in bucket_cols:
-        social_df[col + '_join'] = social_df[col + '_join'].astype(str)
-
-    for bucket in bucket_cols:
-        cols = bucket_col_dict[bucket]
-        raw_cols = raw_bucket_col_dict[bucket]
-        col = bucket + '_join'
-        social_df[cols] = social_df.map_partitions(lambda x: x[col].apply(lambda z: dict_flatten3(z, raw_cols, cols)))
-        social_df = social_df.drop(col, axis=1)
-        
-    social_df = social_df.compute()
-
-
-    social_df[destination_fips_cols] = social_df['destination_cbgs_join'].apply(lambda z: cbgs_dict_flatten2(z, num_fips))
-    print('uploading 10000000 lines of data')
-    social_df.to_csv(cbgs_out
-                    #,single_file = True
-                    #chunksize=chunksize
-    )
-
-                
 
 
 def create_county_timeseries_dataset(data_file_path,
@@ -427,200 +358,273 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
 
 
 
+if __name__ == '__main__':
 
 
 
-
-# Refactored data pipeline
-pool = Pool(60)
+    # Refactored data pipeline
 
 
-unzip_all()
-unzip_us_places()
+    unzip_all()
+    unzip_us_places()
 
-start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
-end_date = dt.today().strftime('%Y-%m-%d') 
+    start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
+    end_date = dt.today().strftime('%Y-%m-%d') 
 
-# Create county timeseries dataset
-in_file = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
-out_file = './data/county_data/county_timeseries.csv'
-print('Creating county time series')
-county_ts = create_county_timeseries_dataset(in_file, out_file)
+    # Create county timeseries dataset
+    in_file = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
+    out_file = './data/county_data/county_timeseries.csv'
+    print('Creating county time series')
+    county_ts = create_county_timeseries_dataset(in_file, out_file)
 
-# Load social distancing data
-print('Building social distancing data')
+    # Load social distancing data
+    print('Building social distancing data')
 
-social = load_social_distance_all()
+    social = load_social_distance_all()
 
-### Number of FIPS cols to keep
-### Create columns for all them FIPS buckets
+    ### Number of FIPS cols to keep
+    ### Create columns for all them FIPS buckets
 
-num_fips = 19
-destination_fips_cols = [j for i in range(num_fips) for j in['destination_fips' + str(i), 'devices' + str(i)]] 
-
-
-### Define aggregation columns
-
-agg_cols = [
-    'device_count', 'distance_traveled_from_home',
-    'completely_home_device_count', 'median_home_dwell_time',
-    'part_time_work_behavior_devices', 'full_time_work_behavior_devices',
-    'delivery_behavior_devices',
-    'median_non_home_dwell_time', 'candidate_device_count',
-    'median_percentage_time_home',
-]
-bucket_cols = [
-        'bucketed_distance_traveled', 'bucketed_home_dwell_time', 
-        'median_dwell_at_bucketed_distance_traveled',
-        'bucketed_away_from_home_time', 
-        'bucketed_percentage_time_home'
-]
-home_cols = ['at_home_by_each_hour']
-destination_cols = ['destination_cbgs']
-groupby_cols = ['origin_fips', 'date_start', 'date_end']
-
-text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
-'bucketed_away_from_home_time_join',
-'bucketed_percentage_time_home_join',
-'at_home_by_each_hour_join',
-'destination_cbgs_join',
-'bucketed_distance_traveled_join', 
-        'bucketed_home_dwell_time_join']
-
-### Define the column names the bucket columns will be split into
-file = pd.read_csv(social[0], error_bad_lines=False, nrows=2)
-
-bucket_col_dict = {}
-raw_bucket_col_dict = {}
-for bucket in bucket_cols:
-    col_prefix = bucket.replace('bucketed_', '')
-    bucket_col_dict[bucket] = file[bucket].apply(lambda x: create_columns(col_prefix, x))[0]
-    bucket_col_dict[bucket].sort()
-    raw_bucket_col_dict[bucket] = file[bucket].apply(lambda x: create_raw_columns(x))[0]
-    raw_bucket_col_dict[bucket].sort()
-
-agg_dict = {x: ['min', 'max', 'sum', 'prod', 'mean', 'std'] for x in agg_cols}
-bucket_dict = {x: lambda y: ''.join(str(y)) for x in bucket_cols + home_cols + destination_cols}
-
-start_dtype = dict([(col, float) for col in agg_cols] + 
-                [(col, str) for col in bucket_cols + home_cols + destination_cols])
-
-out_dtype = dict([(col, float) for col in agg_cols] + 
-                [(col, str) for col in bucket_cols + home_cols + destination_cols] +
-                [('devices' + str(n), 'float64') for n in range(num_fips)] +
-                [('destination_fips' + str(n), 'float64') for n in range(num_fips)]
-                )
-
-pool.map(process_social, social)
+    num_fips = 19
+    destination_fips_cols = [j for i in range(num_fips) for j in['destination_fips' + str(i), 'devices' + str(i)]] 
 
 
-print('Combining social distancing data with county timeseries data')
+    ### Define aggregation columns
 
-start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
-end_date = dt.today().strftime('%Y-%m-%d')
+    agg_cols = [
+        'device_count', 'distance_traveled_from_home',
+        'completely_home_device_count', 'median_home_dwell_time',
+        'part_time_work_behavior_devices', 'full_time_work_behavior_devices',
+        'delivery_behavior_devices',
+        'median_non_home_dwell_time', 'candidate_device_count',
+        'median_percentage_time_home',
+    ]
+    bucket_cols = [
+            'bucketed_distance_traveled', 'bucketed_home_dwell_time', 
+            'median_dwell_at_bucketed_distance_traveled',
+            'bucketed_away_from_home_time', 
+            'bucketed_percentage_time_home'
+    ]
+    home_cols = ['at_home_by_each_hour']
+    destination_cols = ['destination_cbgs']
+    groupby_cols = ['origin_fips', 'date_start', 'date_end']
 
-text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
- 'bucketed_away_from_home_time_join',
- 'bucketed_percentage_time_home_join',
- 'at_home_by_each_hour_join',
- 'destination_cbgs_join',
-  'bucketed_distance_traveled_join', 
-             'bucketed_home_dwell_time_join']
+    text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
+    'bucketed_away_from_home_time_join',
+    'bucketed_percentage_time_home_join',
+    'at_home_by_each_hour_join',
+    'destination_cbgs_join',
+    'bucketed_distance_traveled_join', 
+            'bucketed_home_dwell_time_join']
 
-dtype={'origin_fips': 'str', 'date_start': 'str'}
-in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
-out_file_path = './data/processed_data/assembly/temp.csv'
-'''
-out_dtype['county_id'] = str
-'''
-cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
-cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
+    ### Define the column names the bucket columns will be split into
+    file = pd.read_csv(social[0], error_bad_lines=False, nrows=2)
 
-days = [day for day in pd.date_range(start=start_date, end=end_date)]
+    bucket_col_dict = {}
+    raw_bucket_col_dict = {}
+    for bucket in bucket_cols:
+        col_prefix = bucket.replace('bucketed_', '')
+        bucket_col_dict[bucket] = file[bucket].apply(lambda x: create_columns(col_prefix, x))[0]
+        bucket_col_dict[bucket].sort()
+        raw_bucket_col_dict[bucket] = file[bucket].apply(lambda x: create_raw_columns(x))[0]
+        raw_bucket_col_dict[bucket].sort()
 
-for i, day in enumerate(days):
-    
-    print(day)
-    file_in = in_file_path.format(day.strftime('%Y-%m-%d'))
-    try:
-        social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
-    except:
-        break
-    new_cols = [s for s in social_df.columns if s not in text_cols]
-    social_df = social_df[new_cols]
-    
-    social_df = social_df.map_partitions( lambda df: df.assign(join_key=df.origin_fips.astype(str) + df.date_start.astype(str)))
+    agg_dict = {x: ['min', 'max', 'sum', 'prod', 'mean', 'std'] for x in agg_cols}
+    bucket_dict = {x: lambda y: ''.join(str(y)) for x in bucket_cols + home_cols + destination_cols}
 
-    df2 = social_df.merge(cases_df, how='inner', left_on='join_key', right_on='join_key') #do the merge
-    df2 = df2.drop('join_key', axis=1)
+    start_dtype = dict([(col, float) for col in agg_cols] + 
+                    [(col, str) for col in bucket_cols + home_cols + destination_cols])
 
-    df2.reset_index(drop=True)
-    df2 = df2.compute()
+    out_dtype = dict([(col, float) for col in agg_cols] + 
+                    [(col, str) for col in bucket_cols + home_cols + destination_cols] +
+                    [('devices' + str(n), 'float64') for n in range(num_fips)] +
+                    [('destination_fips' + str(n), 'float64') for n in range(num_fips)]
+                    )
 
-    for col in df2.columns.to_list():
-        if 'fips' in col:
-            df2 = df2.fillna(0)
-            df2[col] = df2[col].astype(int)
-            df2[col] = df2[col].apply(lambda x: str(x).rjust(5, '0'))
-    if i==0:
-        df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
-    else:
-        df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
+    def process_social(file): 
+        # Create the output file; one for every day
+        global start_dtype
+        output_folder = './data/processed_data/social_distancing'
+        cbgs_out = os.path.join(output_folder, file.split('/')[-1])
+
+        # don't run if the file's already processed
+        if os.path.exists(cbgs_out):
+            print('Done: ' + file)
+            return None
+        
+        
+        print('loading: ' + file) 
+        social_df = dd.read_csv(file, error_bad_lines=False, dtype=start_dtype)
+
+        # Create date and origin_fips cols
+        social_df['date_start'] = social_df['date_range_start'].map(lambda x: x[:10]) 
+        social_df['date_end'] = social_df['date_range_end'].map(lambda x: x[:10]) 
+        
+        social_df['origin_fips'] = social_df['origin_census_block_group'].apply(lambda x: cbgs_to_county_fips(x), 
+                                                                        meta=('origin_census_block_group', str)) 
+
+        # Groupby and Sum
+        agg_dict = {x: ['min', 'max', 'sum', 'prod', 'mean', 'std'] for x in agg_cols}
+        bucket_agg = dd.Aggregation('join', 
+                                    lambda x: x.agg(''.join),
+                                    lambda x0: x0.agg(''.join),
+                                )
+        bucket_agg2 = dd.Aggregation('new', 
+                                    lambda x: x.agg( lambda x: dict_flatten2(x, num_fips)),
+                                    lambda x0: x0.agg(''.join),
+                                )
+        
+        bucket_dict = {x: bucket_agg for x in bucket_cols + home_cols + destination_cols}
+        
+        for col in bucket_cols:
+            social_df[col] = social_df[col].astype(str)
+            
+        social_df = social_df[groupby_cols + bucket_cols + agg_cols + home_cols + destination_cols] \
+                .groupby(groupby_cols) \
+                .agg(dict(agg_dict, **bucket_dict)) # most efficient way to add two dicts
+
+        
+        # Kill the dreaded MultiIndex
+        social_df.columns = ['_'.join(col).strip() for col in social_df.columns.values]
+        social_df = social_df.reset_index()
+        
+        
+        
+        # Redo MetaData
+        for col in bucket_cols:
+            social_df[col + '_join'] = social_df[col + '_join'].astype(str)
+
+        for bucket in bucket_cols:
+            cols = bucket_col_dict[bucket]
+            raw_cols = raw_bucket_col_dict[bucket]
+            col = bucket + '_join'
+            social_df[cols] = social_df.map_partitions(lambda x: x[col].apply(lambda z: dict_flatten3(z, raw_cols, cols)))
+            social_df = social_df.drop(col, axis=1)
+            
+        social_df = social_df.compute()
+
+
+        social_df[destination_fips_cols] = social_df['destination_cbgs_join'].apply(lambda z: cbgs_dict_flatten2(z, num_fips))
+        print('uploading 10000000 lines of data')
+        social_df.to_csv(cbgs_out
+                        #,single_file = True
+                        #chunksize=chunksize
+        )
+
+    pool = Pool(60)
 
 
 
-rootdir_old = './data/poi/weekly_patterns/main-file'
-rootdir_new = './data/poi/weekly_patterns_v2/patterns'
-temp_out = './data/processed_data/poi'
+    pool.map(process_social, social)
 
-weeks = []
-for f in os.listdir(rootdir_old):
-    if f[:4] == '2020' and f[-4:] == '.csv':
-        weeks += [f]
 
-print('Initializing pool')
-print('Parsing old POI data')
-complete_counter = 0
-output = {}
-o_to_write = []
-for res in pool.map(parse_week_old_format, weeks):
-    complete_counter += 1
-    print('{}/{} files complete'.format(complete_counter, len(weeks)))
-    
+    print('Combining social distancing data with county timeseries data')
 
-dirpaths = []
-for fp, dirs, files in os.walk(rootdir_new):
-    if len([fn for fn in files if 'patterns-part' in fn and fn[-4:] == '.csv']) > 0: 
-        dirpaths += [fp]
-print('Parsing new POI data')
-complete_counter = 0
-for res in pool.map(parse_week_new_format, dirpaths):
-    complete_counter += 1
-    print('{}/{} files complete'.format(complete_counter, len(dirpaths)))
+    start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
+    end_date = dt.today().strftime('%Y-%m-%d')
 
-print('Assembling POI dataframe')
-is_first = True
-for fp, dirs, files in os.walk('./data/processed_data/poi'): 
-    for f in files:
-        print(f)
-        if is_first:
-            poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+    text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
+    'bucketed_away_from_home_time_join',
+    'bucketed_percentage_time_home_join',
+    'at_home_by_each_hour_join',
+    'destination_cbgs_join',
+    'bucketed_distance_traveled_join', 
+                'bucketed_home_dwell_time_join']
+
+    dtype={'origin_fips': 'str', 'date_start': 'str'}
+    in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
+    out_file_path = './data/processed_data/assembly/temp.csv'
+    '''
+    out_dtype['county_id'] = str
+    '''
+    cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
+    cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
+
+    days = [day for day in pd.date_range(start=start_date, end=end_date)]
+
+    for i, day in enumerate(days):
+        
+        print(day)
+        file_in = in_file_path.format(day.strftime('%Y-%m-%d'))
+        try:
+            social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
+        except:
+            break
+        new_cols = [s for s in social_df.columns if s not in text_cols]
+        social_df = social_df[new_cols]
+        
+        social_df = social_df.map_partitions( lambda df: df.assign(join_key=df.origin_fips.astype(str) + df.date_start.astype(str)))
+
+        df2 = social_df.merge(cases_df, how='inner', left_on='join_key', right_on='join_key') #do the merge
+        df2 = df2.drop('join_key', axis=1)
+
+        df2.reset_index(drop=True)
+        df2 = df2.compute()
+
+        for col in df2.columns.to_list():
+            if 'fips' in col:
+                df2 = df2.fillna(0)
+                df2[col] = df2[col].astype(int)
+                df2[col] = df2[col].apply(lambda x: str(x).rjust(5, '0'))
+        if i==0:
+            df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
         else:
-            poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
-            poi_df = pd.concat([poi_df, poi_df2], axis=0)
+            df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
 
-dtype_dict = out_dtype
-dtype_dict['county_id'] = str
-county_time_series = pd.read_csv('./data/processed_data/assembly/temp.csv', dtype=dtype_dict)
 
-county_time_series = county_time_series.set_index(['county_id', 'date'])
 
-poi_df = poi_df.set_index(['county_id', 'date'])
-print('Joining poi and county_time_series')
+    rootdir_old = './data/poi/weekly_patterns/main-file'
+    rootdir_new = './data/poi/weekly_patterns_v2/patterns'
+    temp_out = './data/processed_data/poi'
 
-output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
-output_df = output_df.reset_index()
-print('Writing final.csv')
-output_df = output_df.drop(columns=['Unnamed: 0'])
-output_df.to_csv('./data/output_data/final.csv', index=False)
+    weeks = []
+    for f in os.listdir(rootdir_old):
+        if f[:4] == '2020' and f[-4:] == '.csv':
+            weeks += [f]
+
+    print('Initializing pool')
+    print('Parsing old POI data')
+    complete_counter = 0
+    output = {}
+    o_to_write = []
+    for res in pool.map(parse_week_old_format, weeks):
+        complete_counter += 1
+        print('{}/{} files complete'.format(complete_counter, len(weeks)))
+        
+
+    dirpaths = []
+    for fp, dirs, files in os.walk(rootdir_new):
+        if len([fn for fn in files if 'patterns-part' in fn and fn[-4:] == '.csv']) > 0: 
+            dirpaths += [fp]
+    print('Parsing new POI data')
+    complete_counter = 0
+    for res in pool.map(parse_week_new_format, dirpaths):
+        complete_counter += 1
+        print('{}/{} files complete'.format(complete_counter, len(dirpaths)))
+
+    print('Assembling POI dataframe')
+    is_first = True
+    for fp, dirs, files in os.walk('./data/processed_data/poi'): 
+        for f in files:
+            print(f)
+            if is_first:
+                poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+            else:
+                poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+                poi_df = pd.concat([poi_df, poi_df2], axis=0)
+
+    dtype_dict = out_dtype
+    dtype_dict['county_id'] = str
+    county_time_series = pd.read_csv('./data/processed_data/assembly/temp.csv', dtype=dtype_dict)
+
+    county_time_series = county_time_series.set_index(['county_id', 'date'])
+
+    poi_df = poi_df.set_index(['county_id', 'date'])
+    print('Joining poi and county_time_series')
+
+    output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
+    output_df = output_df.reset_index()
+    print('Writing final.csv')
+    output_df = output_df.drop(columns=['Unnamed: 0'])
+    output_df.to_csv('./data/output_data/final.csv', index=False)
 
