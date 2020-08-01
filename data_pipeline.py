@@ -266,8 +266,8 @@ def parse_week_old_format(f): #takes filepath,
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
                         day_data = date_to_stats[d]['county_category_data'][cid][category]
-                        row[category + '_count_sum'] = sum([elt['count'] for elt in date_data])
-                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in date_date)/row[category + '_count_sum']
+                        row[category + '_count_sum'] = sum([elt['count'] for elt in day_data])
+                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in day_data)/max(1, row[category + '_count_sum'])
                     else:
                         row[category + '_count_sum'] = 0
                         row[category + '_median_dwell_weighted_avg'] = 0
@@ -342,8 +342,8 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
                         day_data = date_to_stats[d]['county_category_data'][cid][category]
-                        row[category + '_count_sum'] = sum([elt['count'] for elt in date_data])
-                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in date_date)/row[category + '_count_sum']
+                        row[category + '_count_sum'] = sum([elt['count'] for elt in day_data])
+                        row[category + '_median_dwell_weighted_avg'] = sum(elt['count'] * elt['median_dwell'] for elt in day_data)/max(1, row[category + '_count_sum'])
                     else:
                         row[category + '_count_sum'] = 0
                         row[category + '_median_dwell_weighted_avg'] = 0
