@@ -285,6 +285,8 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
     week = '-'.join(fp[-13:-3].split('/')) 
     temp_out = './data/processed_data/poi'
     outfile_name = os.path.join(temp_out, week + '_poi.csv')
+    print('ofname')
+    print(outfile_name)
     if os.path.exists(outfile_name):
         return None 
     else:
@@ -294,7 +296,7 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
         start_date = dt(year=norm_df.iloc[0]['year'], month=norm_df.iloc[0]['month'], day=norm_df.iloc[0]['day'])
         print('Starting {}'.format(start_date.strftime('%Y-%m-%d')))
         
-        dirfiles = [f for f in os.listdir(fp) if f[-4:] == '.csv']
+        dirfiles = [f for f in os.listdir(fp) if f[-7:] == '.csv.gz']
         weekly_df = pd.read_csv(os.path.join(fp, dirfiles[0]), usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})
         for f in dirfiles[1:]:
             weekly_df = pd.concat([weekly_df, pd.read_csv(os.path.join(fp, f), usecols=['safegraph_place_id', 'visits_by_day', 'median_dwell', 'poi_cbg'], dtype={'poi_cbg' : str})], axis=0)
@@ -534,9 +536,9 @@ if __name__ == '__main__':
     dtype={'origin_fips': 'str', 'date_start': 'str'}
     in_file_path = './data/processed_data/social_distancing/{}-social-distancing.csv'
     out_file_path = './data/processed_data/assembly/temp.csv'
-    '''
+
     out_dtype['county_id'] = str
-    '''
+    
     cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
     cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
 
@@ -594,9 +596,10 @@ if __name__ == '__main__':
 
     dirpaths = []
     for fp, dirs, files in os.walk(rootdir_new):
-        if len([fn for fn in files if 'patterns-part' in fn and fn[-4:] == '.csv']) > 0: 
+        if len([fn for fn in files if 'patterns-part' in fn and fn[-7:] == '.csv.gz']) > 0: 
             dirpaths += [fp]
     print('Parsing new POI data')
+    print(dirpaths)
     complete_counter = 0
     for res in pool.map(parse_week_new_format, dirpaths):
         complete_counter += 1
@@ -609,6 +612,7 @@ if __name__ == '__main__':
             print(f)
             if is_first:
                 poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+                is_first = False
             else:
                 poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
                 poi_df = pd.concat([poi_df, poi_df2], axis=0)
