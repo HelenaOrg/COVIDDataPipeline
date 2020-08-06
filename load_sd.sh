@@ -15,4 +15,6 @@ sudo pip3 install censusgeocode ciso8601 tqdm;
 sudo pip3 install "dask[dataframe]" --upgrade ;
 sudo pip3 install pyshp Shapely geopandas ijson python-rapidjson;
 python3 ./data_pipeline.py
+python3 ./build_val_test_sets.py
 aws s3 cp ./data/output_data/final.csv s3://helena-processed-data/data-pipeline/final.csv
+aws s3 cp ./data/output_data/val_test_task_descriptions.json s3://helena-processed-data/data-pipeline/val_test_task_descriptions.json
