@@ -629,7 +629,7 @@ if __name__ == '__main__':
     output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
     output_df = output_df.reset_index()
     print('Writing final.csv')
-    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y'])
+    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y'])
     output_df = output_df.dropna(how='any') 
     output_df.to_csv('./data/output_data/final.csv', index=False)
 
