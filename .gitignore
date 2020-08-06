@@ -2,3 +2,4 @@ set_secret_keys.sh
 venv/
 data/*
 !data/county_data/
+.DS_Store
