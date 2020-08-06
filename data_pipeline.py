@@ -261,7 +261,7 @@ def parse_week_old_format(f): #takes filepath,
                 row = {
                     'date' : d,
                     'county_id' : cid,
-                    'normalizaton_count': date_to_stats[d]['total_devices_seen']
+                    'poi_normalization_count': date_to_stats[d]['total_devices_seen']
                 } 
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
@@ -339,7 +339,7 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
                 row = {
                     'date' : d,
                     'county_id' : cid,
-                    'normalizaton_count': date_to_stats[d]['total_devices_seen']
+                    'poi_normalization_count': date_to_stats[d]['total_devices_seen']
                 } 
                 for category in place_categories:
                     if category in date_to_stats[d]['county_category_data'][cid]:
@@ -612,9 +612,13 @@ if __name__ == '__main__':
             print(f)
             if is_first:
                 poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+                if 'normalizaton_count' in poi_df.columns:
+                    poi_df = poi_df.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
                 is_first = False
             else:
                 poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+                if 'normalizaton_count' in poi_df2.columns:
+                    poi_df2 = poi_df2.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
                 poi_df = pd.concat([poi_df, poi_df2], axis=0)
 
     dtype_dict = out_dtype
@@ -629,8 +633,7 @@ if __name__ == '__main__':
     output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
     output_df = output_df.reset_index()
     print('Writing final.csv')
-    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y'])
+    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y', 'origin_fips'])
     output_df = output_df.dropna(how='any') 
     output_df.to_csv('./data/output_data/final.csv', index=False)
 
-    
