@@ -82,7 +82,13 @@ def accumulate(l):
 def cbgs_dict_flatten(x, n):
     keys = re.findall(r'\"(.+?)\"',x) # collect keys (cbgs) from string
     vals = [int(i) for i in re.findall(r'\:([0-9]+?)[\,\}]', x)] # collect vals (# devices)
-    l = [(i[:5], j) for i, j in zip(keys, vals)] # create a list of lists, convert cbgs to fips
+    # Take care of the nyc issue
+    l = [] # create a list of lists, convert cbgs to fips
+    for i, j in zip(keys, val):
+        cid = i[:5]
+        if cid in ['36061', '36047', '36081', '36085', '36005']:
+            cid = 'new_york_city'
+        l += [(cid, j)]
     z = list(itertools.islice(accumulate(l), n)) # groupby, sum
     return list(sum(z, ())) # flatten the list
 
@@ -90,9 +96,16 @@ def cbgs_dict_flatten(x, n):
 def cbgs_dict_flatten2(x, n=None):
     keys = re.findall(r'\"(.+?)\"',x) # collect keys (cbgs) from string
     vals = [int(i) for i in re.findall(r'\:([0-9]+?)[\,\}]', x)] # collect vals (# devices)
-#     print(keys)
-#     print(vals)
-    l = [(i[:5], j) for i, j in zip(keys, vals)] # create a list of lists, convert cbgs to fips
+    #     print(keys)
+    #     print(vals)
+    # Take care of the nyc issue
+    l = [] # create a list of lists, convert cbgs to fips
+    for i, j in zip(keys, val):
+        cid = i[:5]
+        if cid in ['36061', '36047', '36081', '36085', '36005']:
+            cid = 'new_york_city'
+        l += [(cid, j)]
+
     
     if n:
         z = accumulate(l)[:n] # groupby, sum
@@ -101,7 +114,10 @@ def cbgs_dict_flatten2(x, n=None):
         return accumulate(l)
 
 def cbgs_to_county_fips(cbgs):
-    return str(cbgs).rjust(12, '0')[:5]
+    cid = str(cbgs).rjust(12, '0')[:5]
+    if cid in ['36061', '36047', '36081', '36085', '36005']:
+        cid = 'new_york_city'
+    return cid
 
 def split_cbgs_tuple(r):
     print(r)
@@ -142,6 +158,10 @@ def create_county_timeseries_dataset(data_file_path,
     
     # rename columns
     data.columns = ['date', 'county', 'state', 'county_id', 'Confirmed', 'Deaths']
+
+    # fix new york city
+    locs = data[(data['state'] == 'New York') & (data['county'] == 'New York City')].index 
+    data.loc[locs]['county_id'] = 'new_york_city'
 
     # Kill bad data
     data = data[data['county_id'].isna()==False]
@@ -241,6 +261,10 @@ def parse_week_old_format(f): #takes filepath,
             cbg = row['poi_cbg']
             if type(cbg) == str:
                 county_id = cbg[:5]
+                # fix new york city
+                if county_id in ['36061', '36047', '36081', '36085', '36005']: # manhattan, brooklyn, queens, bronx, staten_island
+                    county_id == 'new_york_city'
+
                 if place_id in place_to_category:
                     category = place_to_category[place_id]
                     if county_id and type(category) == str:
@@ -258,6 +282,7 @@ def parse_week_old_format(f): #takes filepath,
         out_rows = []
         for d in date_to_stats:
             for cid in date_to_stats[d]['county_category_data']:
+                
                 row = {
                     'date' : d,
                     'county_id' : cid,
@@ -318,6 +343,8 @@ def parse_week_new_format(fp): #takes path to file dir, e.g. './data/weekly-patt
             cbg = row['poi_cbg']
             if type(cbg) == str:
                 county_id = cbg[:5]
+                if county_id in ['36061', '36047', '36081', '36085', '36005']: 
+                    county_id = 'new_york_city'
                 if place_id in place_to_category:
                     category = place_to_category[place_id]
                     if county_id and type(category) == str:
@@ -627,6 +654,179 @@ if __name__ == '__main__':
 
     county_time_series = county_time_series.set_index(['county_id', 'date'])
 
+    # Merging in the county census dataset
+    census = pd.read_csv('./data/county_data/county.csv')
+
+    # fix the missing FIPS
+    missing_fips = [{'county': 'Aleutians East Borough', 'state': 'Alaska', 'fips': '02013'},
+        {'county': 'Aleutians West Census Area', 'state': 'Alaska', 'fips': '02016'},
+        {'county': 'Bristol Bay Borough', 'state': 'Alaska', 'fips': '02060'},
+        {'county': 'Denali Borough', 'state': 'Alaska', 'fips': '02068'},
+        {'county': 'Dillingham Census Area', 'state': 'Alaska', 'fips': '02070'},
+        {'county': 'Lake and Peninsula Borough', 'state': 'Alaska', 'fips': '02164'},
+        {'county': 'Skagway Municipality', 'state': 'Alaska', 'fips': '02232'},
+        {'county': 'Yakutat City and Borough', 'state': 'Alaska', 'fips': '02282'},
+        {'county': 'Modoc County', 'state': 'California', 'fips': '06049'},
+        {'county': 'Dolores County', 'state': 'Colorado', 'fips': '08033'},
+        {'county': 'Kiowa County', 'state': 'Colorado', 'fips': '08061'},
+        {'county': 'Sedgwick County', 'state': 'Colorado', 'fips': '08115'},
+        {'county': 'Butte County', 'state': 'Idaho', 'fips': '16023'},
+        {'county': 'Clark County', 'state': 'Idaho', 'fips': '16033'},
+        {'county': 'Decatur County', 'state': 'Kansas', 'fips': '20039'},
+        {'county': 'Graham County', 'state': 'Kansas', 'fips': '20065'},
+        {'county': 'Greeley County', 'state': 'Kansas', 'fips': '20071'},
+        {'county': 'Kingman County', 'state': 'Kansas', 'fips': '20095'},
+        {'county': 'Rawlins County', 'state': 'Kansas', 'fips': '20153'},
+        {'county': 'Wallace County', 'state': 'Kansas', 'fips': '20199'},
+        {'county': 'Wichita County', 'state': 'Kansas', 'fips': '20203'},
+        {'county': 'Dukes County', 'state': 'Massachusetts', 'fips': '25007'},
+        {'county': 'Nantucket County', 'state': 'Massachusetts', 'fips': '25019'},
+        {'county': 'Blaine County', 'state': 'Montana', 'fips': '30005'},
+        {'county': 'Carter County', 'state': 'Montana', 'fips': '30011'},
+        {'county': 'Chouteau County', 'state': 'Montana', 'fips': '30015'},
+        {'county': 'Daniels County', 'state': 'Montana', 'fips': '30019'},
+        {'county': 'Fallon County', 'state': 'Montana', 'fips': '30025'},
+        {'county': 'Garfield County', 'state': 'Montana', 'fips': '30033'},
+        {'county': 'Judith Basin County', 'state': 'Montana', 'fips': '30045'},
+        {'county': 'McCone County', 'state': 'Montana', 'fips': '30055'},
+        {'county': 'Mineral County', 'state': 'Montana', 'fips': '30061'},
+        {'county': 'Petroleum County', 'state': 'Montana', 'fips': '30069'},
+        {'county': 'Phillips County', 'state': 'Montana', 'fips': '30071'},
+        {'county': 'Powder River County', 'state': 'Montana', 'fips': '30075'},
+        {'county': 'Powell County', 'state': 'Montana', 'fips': '30077'},
+        {'county': 'Prairie County', 'state': 'Montana', 'fips': '30079'},
+        {'county': 'Sanders County', 'state': 'Montana', 'fips': '30089'},
+        {'county': 'Sweet Grass County', 'state': 'Montana', 'fips': '30097'},
+        {'county': 'Wibaux County', 'state': 'Montana', 'fips': '30109'},
+        {'county': 'Mora County', 'state': 'New Mexico', 'fips': '35033'},
+        {'county': 'Bronx County', 'state': 'New York', 'fips': '36005'},
+        {'county': 'Kings County', 'state': 'New York', 'fips': '36047'},
+        {'county': 'Queens County', 'state': 'New York', 'fips': '36081'},
+        {'county': 'Richmond County', 'state': 'New York', 'fips': '36085'},
+        {'county': 'Adams County', 'state': 'North Dakota', 'fips': '38001'},
+        {'county': 'Golden Valley County', 'state': 'North Dakota', 'fips': '38033'},
+        {'county': 'Logan County', 'state': 'North Dakota', 'fips': '38047'},
+        {'county': 'Towner County', 'state': 'North Dakota', 'fips': '38095'},
+        {'county': 'Roger Mills County', 'state': 'Oklahoma', 'fips': '40129'},
+        {'county': 'Haakon County', 'state': 'South Dakota', 'fips': '46055'},
+        {'county': 'Harding County', 'state': 'South Dakota', 'fips': '46063'},
+        {'county': 'Jones County', 'state': 'South Dakota', 'fips': '46075'},
+        {'county': 'Perkins County', 'state': 'South Dakota', 'fips': '46105'},
+        {'county': 'Potter County', 'state': 'South Dakota', 'fips': '46107'},
+        {'county': 'Borden County', 'state': 'Texas', 'fips': '48033'},
+        {'county': 'Foard County', 'state': 'Texas', 'fips': '48155'},
+        {'county': 'Kent County', 'state': 'Texas', 'fips': '48263'},
+        {'county': 'King County', 'state': 'Texas', 'fips': '48269'},
+        {'county': 'Loving County', 'state': 'Texas', 'fips': '48301'},
+        {'county': 'McMullen County', 'state': 'Texas', 'fips': '48311'},
+        {'county': 'Sterling County', 'state': 'Texas', 'fips': '48431'},
+        {'county': 'Stonewall County', 'state': 'Texas', 'fips': '48433'},
+        {'county': 'Beaver County', 'state': 'Utah', 'fips': '49001'},
+        {'county': 'Box Elder County', 'state': 'Utah', 'fips': '49003'},
+        {'county': 'Cache County', 'state': 'Utah', 'fips': '49005'},
+        {'county': 'Carbon County', 'state': 'Utah', 'fips': '49007'},
+        {'county': 'Daggett County', 'state': 'Utah', 'fips': '49009'},
+        {'county': 'Duchesne County', 'state': 'Utah', 'fips': '49013'},
+        {'county': 'Emery County', 'state': 'Utah', 'fips': '49015'},
+        {'county': 'Garfield County', 'state': 'Utah', 'fips': '49017'},
+        {'county': 'Grand County', 'state': 'Utah', 'fips': '49019'},
+        {'county': 'Iron County', 'state': 'Utah', 'fips': '49021'},
+        {'county': 'Juab County', 'state': 'Utah', 'fips': '49023'},
+        {'county': 'Kane County', 'state': 'Utah', 'fips': '49025'},
+        {'county': 'Millard County', 'state': 'Utah', 'fips': '49027'},
+        {'county': 'Morgan County', 'state': 'Utah', 'fips': '49029'},
+        {'county': 'Piute County', 'state': 'Utah', 'fips': '49031'},
+        {'county': 'Rich County', 'state': 'Utah', 'fips': '49033'},
+        {'county': 'Sanpete County', 'state': 'Utah', 'fips': '49039'},
+        {'county': 'Sevier County', 'state': 'Utah', 'fips': '49041'},
+        {'county': 'Uintah County', 'state': 'Utah', 'fips': '49047'},
+        {'county': 'Washington County', 'state': 'Utah', 'fips': '49053'},
+        {'county': 'Wayne County', 'state': 'Utah', 'fips': '49055'},
+        {'county': 'Weber County', 'state': 'Utah', 'fips': '49057'},
+        {'county': 'Doddridge County', 'state': 'West Virginia', 'fips': '54017'}
+    ]
+
+    for row in missing_fips:
+        census.FIPS[(census['state'] == row['state']) & (census['county'] == row['county'])] = int(row['fips'])
+
+    census = census[census['FIPS'].notna() & census['hcc_score'].notna()] # only use counties with census and hcc data
+    fips = [(5 - len(elt))*'0' + elt for elt in list(census['FIPS'].astype(int).astype(str))]
+
+    census['county_id'] = fips
+    keep_columns_census = [
+        'county_id',
+        'population',
+        'hcc_score',
+        'poverty'
+    ] 
+
+    # build education columns
+    census['education_less_than_high_school_pct'] = census[[
+        'B15003_002E', 'B15003_003E', 'B15003_004E', 'B15003_005E', 'B15003_006E', 'B15003_007E', 'B15003_008E', 
+        'B15003_008E', 'B15003_009E', 'B15003_010E', 'B15003_011E',  'B15003_012E', 'B15003_013E', 'B15003_014E', 
+        'B15003_015E', 'B15003_016E'
+    ]].sum(axis=1)/census['B15003_001E']
+
+    census['education_high_school_pct'] = census[[
+        'B15003_017E', 'B15003_018E'
+    ]].sum(axis=1)/census['B15003_001E']
+
+    census['education_some_college_or_college_grad_pct'] = census[[
+        'B15003_019E', 'B15003_020E', 'B15003_021E', 'B15003_022E',
+    ]].sum(axis=1)/census['B15003_001E']
+
+    census['education_graduate_degree_pct'] = census[[
+        'B15003_023E', 'B15003_024E', 'B15003_025E' 
+    ]].sum(axis=1)/census['B15003_001E']
+
+    # build race columns
+    census['race_white_pct'] = census['B03002_003E']/census['B03002_001E']
+    census['race_black_pct'] = census['B03002_004E']/census['B03002_001E']
+    census['race_amer_indian_pct'] = census['B03002_005E']/census['B03002_001E']
+    census['race_asian_pct'] = census['B03002_006E']/census['B03002_001E']
+    census['race_hawaiian_pac_islander_pct'] = census['B03002_007E']/census['B03002_001E']
+    census['race_other_pct'] = (census['B03002_008E'] + census['B03002_009E'] + census['B03002_010E'] + census['B03002_011E'])/census['B03002_001E']
+    census['race_hispanic_latino_pct'] = census['B03002_012E']/census['B03002_001E']
+
+    keep_columns_census = [
+        'county_id',
+        'population',
+        'hcc_score',
+        'poverty',
+        'education_less_than_high_school_pct',
+        'education_high_school_pct',
+        'education_some_college_or_college_grad_pct',
+        'education_graduate_degree_pct',
+        'race_white_pct',
+        'race_black_pct',
+        'race_amer_indian_pct',
+        'race_asian_pct',
+        'race_hawaiian_pac_islander_pct',
+        'race_other_pct',
+        'race_hispanic_latino_pct'
+    ]
+
+    census = census[keep_columns_census]
+    # fix new york by averaging columns weighted on population
+    new_york_counties = census[census['county_id'].isin(['36061', '36047', '36081', '36085', '36005'])]
+
+    population_denom = new_york_counties['population'].sum()
+    new_york_counties['weight'] = new_york_counties['population']/population_denom
+
+    non_weight_cols = [c for c in new_york_counties.columns if c not in ['weight', 'population', 'county_id']]
+    for c in non_weight_cols: 
+        new_york_counties[c] = np.average(new_york_counties[c], weights=new_york_counties['weight'])
+    new_york_counties.county_id.iloc[0] = 'new_york_city'
+    census = census.append(new_york_counties.iloc[:1])
+    census = census.set_index('county_id')
+    census = census.drop(index=['36061', '36047', '36081', '36085', '36005'])
+
+    print('Joining census into county_time_series')
+    print(county_time_series.shape)
+    county_time_series = county_time_series.join(census, on=['county_id'], how='outer')
+    print(county_time_series.shape)
+
+    county_time_series = county_time_series.set_index(['county_id', 'date'])
     poi_df = poi_df.set_index(['county_id', 'date'])
     print('Joining poi and county_time_series')
 

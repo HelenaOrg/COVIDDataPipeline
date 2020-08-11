@@ -3,3 +3,4 @@ venv/
 data/*
 !data/county_data/
 .DS_Store
+test.py
