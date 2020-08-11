@@ -21,7 +21,10 @@ for n_prediction_weeks in range(1, 5):
             }]
     evaluation_days[str(n_prediction_weeks) + '_week_task'] = task_set
 
-counties = list(set(df[df['date'] == last_day]['county_id']))
+end_counties = set(df[df['date'] == last_day]['county_id'])
+start_counties = set(df[df['date'] == prediction_day_start]['county_id'])
+counties = list(start_counties.intersection(end_counties))
+
 cutoff = int(round(len(counties)/2.0))
 test_counties = counties[cutoff:]
 val_counties = counties[:cutoff]
