@@ -39,6 +39,7 @@ print(len(place_to_category))
 def unzip_us_places():
     for fp, dirs, files in os.walk('./data/us_places'):
         for f in files:
+
             if f[-4:] == '.zip':
                 zf = zipfile.ZipFile(os.path.join(fp, f))
                 zf.extractall(fp)
@@ -84,7 +85,7 @@ def cbgs_dict_flatten(x, n):
     vals = [int(i) for i in re.findall(r'\:([0-9]+?)[\,\}]', x)] # collect vals (# devices)
     # Take care of the nyc issue
     l = [] # create a list of lists, convert cbgs to fips
-    for i, j in zip(keys, val):
+    for i, j in zip(keys, vals):
         cid = i[:5]
         if cid in ['36061', '36047', '36081', '36085', '36005']:
             cid = 'new_york_city'
@@ -100,7 +101,7 @@ def cbgs_dict_flatten2(x, n=None):
     #     print(vals)
     # Take care of the nyc issue
     l = [] # create a list of lists, convert cbgs to fips
-    for i, j in zip(keys, val):
+    for i, j in zip(keys, vals):
         cid = i[:5]
         if cid in ['36061', '36047', '36081', '36085', '36005']:
             cid = 'new_york_city'
@@ -158,16 +159,15 @@ def create_county_timeseries_dataset(data_file_path,
     
     # rename columns
     data.columns = ['date', 'county', 'state', 'county_id', 'Confirmed', 'Deaths']
-
+  
     # fix new york city
-    locs = data[(data['state'] == 'New York') & (data['county'] == 'New York City')].index 
-    data.loc[locs]['county_id'] = 'new_york_city'
+    data.loc[(data['state'] == 'New York') & (data['county'] == 'New York City'), 'county_id'] = 'new_york_city'
 
     # Kill bad data
     data = data[data['county_id'].isna()==False]
 
     # Robust load of county_id
-    data['county_id'] = data['county_id'].apply(lambda s: str(int(s)).rjust(5, '0'))
+    #data['county_id'] = data['county_id'].apply(lambda s: str(int(s)).rjust(5, '0'))
 
     # Why is there even duplicate data I did inner joins
     data = data.drop_duplicates()
@@ -213,6 +213,17 @@ def create_county_timeseries_dataset(data_file_path,
     
     # right now, not forward filling cases or deaths, only 5 counties have day-level discontinuities in their reporting
     # these discontinuities ought to be handled at the dataset level
+    cids = []
+    for cid in list(county_cases['county_id']):
+        cid = str(cid)
+        if '.' in cid:
+            cid = cid.split('.')[0]
+        if 'new_york' not in cid:
+            cid = '0'*(5 - len(cid)) + cid
+        cids += [cid]
+    county_cases['county_id'] = cids
+    print('Writing timeseries ' + out_file_path)
+
     county_cases.to_csv(out_file_path, index=False)
 
 def create_columns(col_prefix, x):
@@ -263,7 +274,7 @@ def parse_week_old_format(f): #takes filepath,
                 county_id = cbg[:5]
                 # fix new york city
                 if county_id in ['36061', '36047', '36081', '36085', '36005']: # manhattan, brooklyn, queens, bronx, staten_island
-                    county_id == 'new_york_city'
+                    county_id = 'new_york_city'
 
                 if place_id in place_to_category:
                     category = place_to_category[place_id]
@@ -565,6 +576,9 @@ if __name__ == '__main__':
     out_file_path = './data/processed_data/assembly/temp.csv'
 
     out_dtype['county_id'] = str
+    out_dtype['origin_fips'] = str
+    for d in ['destination_fips' + str(n) for n in range(num_fips)]:
+        out_dtype[d] = str
     
     cases_df = pd.read_csv('./data/county_data/county_timeseries.csv', dtype=out_dtype)
     cases_df['join_key'] = cases_df.apply(lambda d:  str(d['county_id']) +  d['date'], axis=1)
@@ -576,12 +590,15 @@ if __name__ == '__main__':
         print(day)
         file_in = in_file_path.format(day.strftime('%Y-%m-%d'))
         try:
-            social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=out_dtype)
+
+            sdf_dtype = out_dtype
+
+            social_df = dd.read_csv(file_in, error_bad_lines=False, dtype=sdf_dtype)
         except:
             break
         new_cols = [s for s in social_df.columns if s not in text_cols]
         social_df = social_df[new_cols]
-        
+
         social_df = social_df.map_partitions( lambda df: df.assign(join_key=df.origin_fips.astype(str) + df.date_start.astype(str)))
 
         df2 = social_df.merge(cases_df, how='inner', left_on='join_key', right_on='join_key') #do the merge
@@ -592,15 +609,18 @@ if __name__ == '__main__':
 
         for col in df2.columns.to_list():
             if 'fips' in col:
-                df2 = df2.fillna(0)
-                df2[col] = df2[col].astype(int)
-                df2[col] = df2[col].apply(lambda x: str(x).rjust(5, '0'))
-        if i==0:
+                if df2[col].dtype.kind in 'biufc': # check to see if numeric
+                    df2 = df2.fillna(0)
+                    df2[col] = df2[col].astype(int)
+                    df2[col] = df2[col].apply(lambda x: str(x).rjust(5, '0'))
+        if i==0: 
             df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
         else:
-            df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True)
+            df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True
 
 
+    # check nyc membership
+    # check to see if missing FIPS are rally being filled in
 
     rootdir_old = './data/poi/weekly_patterns/main-file'
     rootdir_new = './data/poi/weekly_patterns_v2/patterns'
@@ -639,11 +659,14 @@ if __name__ == '__main__':
             print(f)
             if is_first:
                 poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+                poi_df = poi_df.set_index('county_id')
+
                 if 'normalizaton_count' in poi_df.columns:
                     poi_df = poi_df.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
                 is_first = False
             else:
                 poi_df2 = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
+            
                 if 'normalizaton_count' in poi_df2.columns:
                     poi_df2 = poi_df2.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
                 poi_df = pd.concat([poi_df, poi_df2], axis=0)
@@ -747,7 +770,7 @@ if __name__ == '__main__':
     ]
 
     for row in missing_fips:
-        census.FIPS[(census['state'] == row['state']) & (census['county'] == row['county'])] = int(row['fips'])
+        census.loc[(census['state'] == row['state']) & (census['county'] == row['county']), 'FIPS'] = int(row['fips'])
 
     census = census[census['FIPS'].notna() & census['hcc_score'].notna()] # only use counties with census and hcc data
     fips = [(5 - len(elt))*'0' + elt for elt in list(census['FIPS'].astype(int).astype(str))]
@@ -808,8 +831,8 @@ if __name__ == '__main__':
 
     census = census[keep_columns_census]
     # fix new york by averaging columns weighted on population
-    new_york_counties = census[census['county_id'].isin(['36061', '36047', '36081', '36085', '36005'])]
-
+    new_york_counties = census.loc[census['county_id'].isin(['36061', '36047', '36081', '36085', '36005'])].copy()
+    print(new_york_counties.shape)
     population_denom = new_york_counties['population'].sum()
     new_york_counties['weight'] = new_york_counties['population']/population_denom
 
@@ -820,13 +843,10 @@ if __name__ == '__main__':
     census = census.append(new_york_counties.iloc[:1])
     census = census.set_index('county_id')
     census = census.drop(index=['36061', '36047', '36081', '36085', '36005'])
+    census = census.drop(columns=['weight'])
+    census = census.reset_index()
+    census.to_csv('./data/output_data/final_static.csv', index=False)
 
-    print('Joining census into county_time_series')
-    print(county_time_series.shape)
-    county_time_series = county_time_series.join(census, on=['county_id'], how='outer')
-    print(county_time_series.shape)
-
-    county_time_series = county_time_series.set_index(['county_id', 'date'])
     poi_df = poi_df.set_index(['county_id', 'date'])
     print('Joining poi and county_time_series')
 
@@ -835,5 +855,5 @@ if __name__ == '__main__':
     print('Writing final.csv')
     output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y', 'origin_fips'])
     output_df = output_df.dropna(how='any') 
-    output_df.to_csv('./data/output_data/final.csv', index=False)
+    output_df.to_csv('./data/output_data/final_timeseries.csv', index=False)
 

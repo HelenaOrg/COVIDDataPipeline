@@ -2,8 +2,10 @@ from datetime import datetime as dt, timedelta
 import pandas as pd 
 import json
 
-df = pd.read_csv('./data/output_data/final.csv')
+df = pd.read_csv('./data/output_data/final_timeseries.csv', dtype={'county_id' : str})
 df['date'] = pd.to_datetime(df['date'])
+
+df_static =  pd.read_csv('./data/output_data/final_static.csv', dtype={'county_id' : str})
 
 last_day = df['date'].max() - timedelta(days=7)
 
@@ -23,7 +25,16 @@ for n_prediction_weeks in range(1, 5):
 
 end_counties = set(df[df['date'] == last_day]['county_id'])
 start_counties = set(df[df['date'] == prediction_day_start]['county_id'])
-counties = list(start_counties.intersection(end_counties))
+static_counties = set(df_static['county_id'])
+
+
+print('Missing in static')
+print(sorted(list(end_counties - static_counties)))
+
+print('Missing in time series')
+print(sorted(list(static_counties - end_counties)))
+
+counties = list(start_counties.intersection(end_counties).intersection(static_counties))
 
 cutoff = int(round(len(counties)/2.0))
 test_counties = counties[cutoff:]
