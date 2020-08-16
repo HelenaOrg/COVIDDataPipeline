@@ -7,9 +7,13 @@ df['date'] = pd.to_datetime(df['date'])
 
 df_static =  pd.read_csv('./data/output_data/final_static.csv', dtype={'county_id' : str})
 
-last_day = df['date'].max() - timedelta(days=7)
+print(df['date'].max())
+last_day = df['date'].max() - timedelta(days=2*7) # add in 7 days of buffer so we can iterate forward a week, and 7 days so we can ensure we're operating on up-to-date data (poi data updates weekly)
 
-prediction_day_start = last_day - timedelta(days=7*4)
+prediction_day_start = last_day - timedelta(days=7*4) # 4 weeks is the longest prediction that we make
+
+print(prediction_day_start)
+print(last_day)
 
 evaluation_days = {}
 for n_prediction_weeks in range(1, 5):
@@ -23,10 +27,9 @@ for n_prediction_weeks in range(1, 5):
             }]
     evaluation_days[str(n_prediction_weeks) + '_week_task'] = task_set
 
-end_counties = set(df[df['date'] == last_day]['county_id'])
-start_counties = set(df[df['date'] == prediction_day_start]['county_id'])
+end_counties = set(df[df['date'] == last_day]['county_id']) # use the timedelta to add in buffer
+start_counties = set(df[df['date'] == prediction_day_start]['county_id']) # use the timedelta to add in buffer
 static_counties = set(df_static['county_id'])
-
 
 print('Missing in static')
 print(sorted(list(end_counties - static_counties)))

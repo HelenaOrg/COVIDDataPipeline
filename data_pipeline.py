@@ -415,7 +415,7 @@ if __name__ == '__main__':
     in_file = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv'
     out_file = './data/county_data/county_timeseries.csv'
     print('Creating county time series')
-    county_ts = create_county_timeseries_dataset(in_file, out_file)
+    create_county_timeseries_dataset(in_file, out_file)
 
     # Load social distancing data
     print('Building social distancing data')
@@ -617,7 +617,8 @@ if __name__ == '__main__':
             df2.to_csv(out_file_path,mode='w', index=False)#, single_file = True)
         else:
             df2.to_csv(out_file_path, mode='a', header=False, index=False)#, single_file = True
-
+    
+    # At this point in time it seems that the date index is totally full
 
     # check nyc membership
     # check to see if missing FIPS are rally being filled in
@@ -659,7 +660,6 @@ if __name__ == '__main__':
             print(f)
             if is_first:
                 poi_df = pd.read_csv(os.path.join(fp, f), dtype={'county_id' : str})
-                poi_df = poi_df.set_index('county_id')
 
                 if 'normalizaton_count' in poi_df.columns:
                     poi_df = poi_df.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
@@ -670,6 +670,10 @@ if __name__ == '__main__':
                 if 'normalizaton_count' in poi_df2.columns:
                     poi_df2 = poi_df2.rename(columns={'normalizaton_count' : 'poi_normalization_count'})
                 poi_df = pd.concat([poi_df, poi_df2], axis=0)
+    
+    #print(poi_df.shape)
+    poi_df.to_csv('./data/processed_data/assembly/temp_poi.csv', index=False)
+    #print('written')
 
     dtype_dict = out_dtype
     dtype_dict['county_id'] = str
@@ -853,7 +857,6 @@ if __name__ == '__main__':
     output_df = county_time_series.join(poi_df, on=['county_id', 'date'], how='outer')
     output_df = output_df.reset_index()
     print('Writing final.csv')
-    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y', 'origin_fips'])
-    output_df = output_df.dropna(how='any') 
+    output_df = output_df.drop(columns=['Unnamed: 0', 'date_start_x', 'date_start_y', 'date_end_x', 'date_end_y', 'origin_fips'] + [c for c in output_df.columns if c[-5:] == '_prod'])
     output_df.to_csv('./data/output_data/final_timeseries.csv', index=False)
 
