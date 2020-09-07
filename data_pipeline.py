@@ -26,10 +26,10 @@ import random
 import zipfile
 print('Building POI data')
 
-places_df = pd.read_csv('./data/us_places/2020/07/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
+places_df = pd.read_csv('./data/us_places/2020/08/core_poi-part1.csv.gz', usecols=['safegraph_place_id', 'latitude', 'longitude', 'top_category'])
 for i in range(2, 6):
     print('Reading places DF: {}'.format(i))
-    places_df = pd.concat([places_df, pd.read_csv('./data/us_places/2020/07/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
+    places_df = pd.concat([places_df, pd.read_csv('./data/us_places/2020/08/core_poi-part{}.csv.gz'.format(i), usecols=['safegraph_place_id', 'top_category'])])
 
 place_categories = [p for p in set(list(places_df['top_category'])) if p is not np.nan]
 place_to_category = dict(zip(places_df['safegraph_place_id'], places_df['top_category']))
@@ -195,8 +195,8 @@ def create_county_timeseries_dataset(data_file_path,
                      'date_start': pd.to_datetime(start_date),
                      'date_end': pd.to_datetime(start_date),
                      'county_id': county[0],
-                     'Deaths': 0.00001,
-                     'Confirmed': 0.00001,
+                     'Deaths': np.nan,
+                     'Confirmed': np.nan,
                      'county': county[1]['county'],
                      'state': county[1]['state']
                     }
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     unzip_all()
     unzip_us_places()
 
-    start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
+    start_date = dt.strptime("01-06-2020", "%m-%d-%Y")
     end_date = dt.today().strftime('%Y-%m-%d') 
 
     # Create county timeseries dataset
@@ -560,7 +560,7 @@ if __name__ == '__main__':
 
     print('Combining social distancing data with county timeseries data')
 
-    start_date = dt.strptime("01-22-2020", "%m-%d-%Y")
+    start_date = dt.strptime("01-06-2020", "%m-%d-%Y")
     end_date = dt.today().strftime('%Y-%m-%d')
 
     text_cols = ['median_dwell_at_bucketed_distance_traveled_join',
